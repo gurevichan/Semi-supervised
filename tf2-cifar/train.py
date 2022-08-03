@@ -19,6 +19,7 @@ class Args:
     epoch=200
     resume=False
     gpu=0
+    train_data_fraction=1.0
 args = Args() 
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 
@@ -61,7 +62,8 @@ class Model():
         self.train_accuracy = tf.keras.metrics.CategoricalAccuracy(name='train_accuracy')
         self.test_loss = tf.keras.metrics.Mean(name='test_loss')
         self.test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
-        
+        self.ckpt_path = f'./checkpoints/{args.model}/train_frac_{args.train_data_fraction}'
+
     @tf.function
     def train_step(self, images, labels):
         with tf.GradientTape() as tape:
@@ -100,15 +102,14 @@ class Model():
     def train(self, train_ds, test_ds, epoch):
         best_acc = tf.Variable(0.0)
         curr_epoch = tf.Variable(0)  # start from epoch 0 or last checkpoint epoch
-        ckpt_path = './checkpoints/{:s}/'.format(args.model)
         ckpt = tf.train.Checkpoint(curr_epoch=curr_epoch, best_acc=best_acc,
                                    optimizer=self.optimizer, model=self.model)
-        manager = tf.train.CheckpointManager(ckpt, ckpt_path, max_to_keep=1)
+        manager = tf.train.CheckpointManager(ckpt, self.ckpt_path, max_to_keep=1)
         
         if args.resume:
             # Load checkpoint.
             print('==> Resuming from checkpoint...')
-            assert os.path.isdir(ckpt_path), 'Error: no checkpoint directory found!'
+            assert os.path.isdir(self.ckpt_path), 'Error: no checkpoint directory found!'
 
             # Restore the weights
             ckpt.restore(manager.latest_checkpoint)
@@ -126,20 +127,17 @@ class Model():
             for images, labels in test_ds:
                 self.test_step(images, labels)
 
-            template = 'Epoch {:0}, Loss: {:.4f}, Accuracy: {:.2f}%, Test Loss: {:.4f}, Test Accuracy: {:.2f}%'
-            print (template.format(e+1,
-                                   self.train_loss.result(),
-                                   self.train_accuracy.result()*100,
-                                   self.test_loss.result(),
-                                   self.test_accuracy.result()*100))
+            template = f"Epoch {e+1}, Loss: {self.train_loss.result():.4f}, Accuracy: {self.train_accuracy.result()*100:.2f}%, " + \
+                       f"Test Loss: {self.test_loss.result()}, Test Accuracy: {self.test_accuracy.result()*100}%"
+            print (template)
             
             # Save checkpoint
             if self.test_accuracy.result() > best_acc:
                 print('Saving...')
                 if not os.path.isdir('./checkpoints/'):
                     os.mkdir('./checkpoints/')
-                if not os.path.isdir(ckpt_path):
-                    os.mkdir(ckpt_path)
+                if not os.path.isdir(self.ckpt_path):
+                    os.mkdir(self.ckpt_path)
                 best_acc.assign(self.test_accuracy.result())
                 curr_epoch.assign(e+1)
                 manager.save()
@@ -153,15 +151,14 @@ class Model():
 
     def predict(self, pred_ds, best):
         if best:
-            ckpt_path = './checkpoints/{:s}/'.format(args.model)
-            self.load_model_from_ckpt(ckpt_path)
+            self.load_model_from_ckpt(self.ckpt_path)
         
         self.run_test(pred_ds)
 
 def main():
     # Data
     print('==> Preparing data...')
-    train_images, train_labels, test_images, test_labels = get_dataset()
+    train_images, train_labels, test_images, test_labels = get_dataset(args.train_data_fraction)
     mean, std = get_mean_and_std(train_images)
     train_images = normalize(train_images, mean, std)
     test_images = normalize(test_images, mean, std)
@@ -188,6 +185,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr', default=1e-1, type=float, help='learning rate')
     parser.add_argument('--batch_size', default=128, type=int, help='batch size')
     parser.add_argument('--epoch', default=200, type=int, help='number of training epoch')
+    parser.add_argument('--train_data_fraction', default=1.0, type=float, help='fraction of data to use in train')
     parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
     parser.add_argument('--gpu', default=0, type=int, help='specify which gpu to be used')
     args = parser.parse_args()

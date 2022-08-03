@@ -15,10 +15,14 @@ padding = 4
 image_size = 32
 target_size = image_size + padding*2
 
-def get_dataset():
+def get_dataset(train_data_fraction=1.0):
     """Download, parse and process a dataset to unit scale and one-hot labels."""
     (train_images, train_labels), (test_images, test_labels) = datasets.cifar10.load_data()
-    
+    assert train_data_fraction > 0.0 and train_data_fraction <= 1.0, "train_data_fraction must be in (0,1]"
+    train_samples = int(len(train_labels) * train_data_fraction)
+    train_images = train_images[:train_samples]
+    train_labels = train_labels[:train_samples]
+    print(f'Train labels distribution {np.unique(train_labels, return_counts=True)} for {train_samples} labeled images')
     # Normalize pixel values to be between 0 and 1
     train_images, test_images = train_images/255.0, test_images/255.0
     
