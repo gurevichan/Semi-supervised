@@ -10,11 +10,12 @@ import sys
 import argparse
 from tqdm import tqdm
 
-from models import *
-from utils import *
+import models
+import utils 
 
 
 class Args:
+    #TODO: remove this and args from the trainer
     model="resnet18"
     lr=1e-1
     batch_size=128
@@ -26,35 +27,9 @@ args = Args()
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 
 
-class Model():
-    def __init__(self, model_type, decay_steps, num_classes=10):
-        if 'lenet' in model_type:
-            self.model = LeNet(num_classes)
-        elif 'alexnet' in model_type:
-            self.model = AlexNet(num_classes)
-        elif 'vgg' in model_type:
-            self.model = VGG(model_type, num_classes)
-        elif 'resnet' in model_type:
-            if 'se' in model_type:
-                if 'preact' in model_type:
-                    self.model = SEPreActResNet(model_type, num_classes)
-                else:
-                    self.model = SEResNet(model_type, num_classes)
-            else:
-                if 'preact' in model_type:
-                    self.model = PreActResNet(model_type, num_classes)
-                else:
-                    self.model = ResNet(model_type, num_classes)
-        elif 'densenet' in model_type:
-            self.model = DenseNet(model_type, num_classes)
-        elif 'mobilenet' in model_type:
-            if 'v2' not in model_type:
-                self.model = MobileNet(num_classes)
-            else:
-                self.model = MobileNetV2(num_classes)
-        else:
-            sys.exit(ValueError("{:s} is currently not supported.".format(model_type)))
-        
+class SupervisedTrainer():
+    def __init__(self, model_type, decay_steps, num_classes=10, **kwargs):
+        self.model = utils.create_model(model_type, num_classes)
         self.loss_object = tf.keras.losses.CategoricalCrossentropy()
         learning_rate_fn = tf.keras.experimental.CosineDecay(args.lr, decay_steps=decay_steps)
         self.optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate_fn, momentum=0.9)
@@ -90,15 +65,16 @@ class Model():
         self.test_loss(t_loss)
         self.test_accuracy(labels, predictions)
 
-    def load_model_from_ckpt(self, ckpt_path):
-        ckpt = tf.train.Checkpoint(model=self.model)
-        manager = tf.train.CheckpointManager(ckpt, ckpt_path, max_to_keep=1)
+    @staticmethod
+    def load_weights_to_model(model, ckpt_path):
+        ckpt = tf.train.Checkpoint(model=model)
         # Load checkpoint.
         print(f'==> Loading from checkpoint... {ckpt_path}')
-        assert os.path.isdir(ckpt_path), 'Error: no checkpoint directory found!'
+        manager = tf.train.CheckpointManager(ckpt, ckpt_path, max_to_keep=1)
 
+        assert os.path.isdir(ckpt_path), 'Error: no checkpoint directory found!'
         # Restore the weights
-        ckpt.restore(manager.latest_checkpoint)
+        ckpt.restore(manager.latest_checkpoint).expect_partial()
         
         
     def train(self, train_ds, test_ds, epoch):
@@ -112,7 +88,6 @@ class Model():
             # Load checkpoint.
             print('==> Resuming from checkpoint...')
             assert os.path.isdir(self.ckpt_path), 'Error: no checkpoint directory found!'
-
             # Restore the weights
             ckpt.restore(manager.latest_checkpoint)
         
@@ -136,50 +111,30 @@ class Model():
             # Save checkpoint
             if self.test_accuracy.result() > best_acc:
                 print('Saving...')
-                if not os.path.isdir('./checkpoints/'):
-                    os.mkdir('./checkpoints/')
                 if not os.path.isdir(self.ckpt_path):
-                    os.mkdir(self.ckpt_path)
+                    os.makedirs(self.ckpt_path)
                 best_acc.assign(self.test_accuracy.result())
                 curr_epoch.assign(e+1)
                 manager.save()
-    
-    def run_test(self, pred_ds):
-        self.test_accuracy.reset_states()
-        for images, labels in pred_ds:
-            self.test_step(images, labels)
-        print ('Prediction Accuracy: {:.2f}%'.format(self.test_accuracy.result()*100))
-        
 
-    def predict(self, pred_ds, best):
+    def predict(self, pred_ds, best, model=None):
+        model = self.model if model is None else model
         if best:
-            self.load_model_from_ckpt(self.ckpt_path)
-        
-        self.run_test(pred_ds)
+            # TODO: this loads the best model INPLACE!!!!
+            self.load_weights_to_model(model, self.ckpt_path)
+        utils.evaluate_model(self.model, pred_ds)
 
-def main():
-    # Data
-    print('==> Preparing data...')
-    train_images, train_labels, test_images, test_labels = get_dataset(args.train_data_fraction)
-    mean, std = get_mean_and_std(train_images)
-    train_images = normalize(train_images, mean, std)
-    test_images = normalize(test_images, mean, std)
 
-    train_ds = dataset_generator(train_images, train_labels, args.batch_size)
-    test_ds = tf.data.Dataset.from_tensor_slices((test_images, test_labels)).\
-            batch(args.batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-
-    class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
-                   'dog', 'frog', 'horse', 'ship', 'truck']
-    decay_steps = int(args.epoch*len(train_images)/args.batch_size)
+def main(args):
+    train_ds, test_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size, args.epoch)
     
     # Train
     print('==> Building model...')
-    model = Model(args.model, decay_steps)
-    model.train(train_ds, test_ds, args.epoch)
+    trainer = SupervisedTrainer(args.model, decay_steps)
+    trainer.train(train_ds, test_ds, args.epoch)
     
     # Evaluate
-    model.predict(test_ds, best=True)
+    trainer.predict(test_ds, best=True)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='TensorFlow2.0 CIFAR-10 Training')
@@ -196,4 +151,4 @@ if __name__ == "__main__":
     policy = mixed_precision.Policy('mixed_float16')
     mixed_precision.set_global_policy(policy)
 
-    main()
+    main(args)
