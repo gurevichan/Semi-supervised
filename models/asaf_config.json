@@ -1,0 +1,26 @@
+{
+  "experiment_name": "cifar",
+  "repetitions": 1,
+  "gpu": 0,
+  "output_dir": "outputs/ensemble_06-06-22/cifar_bs_{batch_size}_epochs_{epochs}_lr_{lr}_model_{model}_{optimizer}",
+  "model": "cifar10resnet18",
+  "optimizer": "sgd",
+  "lr": 1e-1,
+  "scheduler": "cosine",
+  "momentum": 0.9,
+  "weight_decay": 5e-4,
+  "data_augmentation": [
+    "normalization",
+    "padding",
+    "random_crop",
+    "random_flip"
+  ],
+  "epochs": 80,
+  "batch_size": 128,
+  "train_samples": -1,
+  "test_samples": -1,
+  "checkpoint_save_interval": 100,
+  "use_wandb": true,
+  "wandb_project": "cifar10_resnet",
+  "wandb_entity": "asafmaman"
+}
