@@ -76,7 +76,7 @@ class BuildResNet(tf.keras.Model):
         self.layer4 = self._make_layer(block, 512, num_blocks[3], strides=2)
         self.avg_pool2d = layers.AveragePooling2D(pool_size=4)
         self.flatten = layers.Flatten()
-        self.fc = layers.Dense(num_classes, activation='softmax')
+        self.fc = layers.Dense(num_classes, activation='softmax', dtype=tf.float32)
     
     def call(self, x):
         out = tf.keras.activations.relu(self.bn1(self.conv1(x)))

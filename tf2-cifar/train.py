@@ -1,6 +1,7 @@
 """Train CIFAR-10 with TensorFlow2.0."""
 import tensorflow as tf
 from tensorflow.keras import layers
+from tensorflow.keras import mixed_precision
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,6 +12,7 @@ from tqdm import tqdm
 
 from models import *
 from utils import *
+
 
 class Args:
     model="resnet18"
@@ -64,7 +66,7 @@ class Model():
         self.test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
         self.ckpt_path = f'./checkpoints/{args.model}/train_frac_{args.train_data_fraction}'
 
-    @tf.function
+    @tf.function #(jit_compile=True)
     def train_step(self, images, labels):
         with tf.GradientTape() as tape:
             predictions = self.model(images, training=True)
@@ -128,7 +130,7 @@ class Model():
                 self.test_step(images, labels)
 
             template = f"Epoch {e+1}, Loss: {self.train_loss.result():.4f}, Accuracy: {self.train_accuracy.result()*100:.2f}%, " + \
-                       f"Test Loss: {self.test_loss.result()}, Test Accuracy: {self.test_accuracy.result()*100}%"
+                       f"Test Loss: {self.test_loss.result():.4f}, Test Accuracy: {self.test_accuracy.result()*100:.2f}%"
             print (template)
             
             # Save checkpoint
@@ -190,5 +192,8 @@ if __name__ == "__main__":
     parser.add_argument('--gpu', default=0, type=int, help='specify which gpu to be used')
     args = parser.parse_args()
     args.model = args.model.lower()
+
+    policy = mixed_precision.Policy('mixed_float16')
+    mixed_precision.set_global_policy(policy)
 
     main()
