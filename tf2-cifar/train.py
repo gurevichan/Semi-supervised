@@ -63,21 +63,10 @@ class SupervisedTrainer():
         self.test_loss(t_loss)
         self.test_accuracy(labels, predictions)
 
-    def train(self, train_ds, test_ds, epoch):
-        best_acc = tf.Variable(0.0)
-        curr_epoch = tf.Variable(0)  # start from epoch 0 or last checkpoint epoch
-        ckpt = tf.train.Checkpoint(curr_epoch=curr_epoch, best_acc=best_acc, optimizer=self.optimizer, model=self.model)
-        manager = tf.train.CheckpointManager(ckpt, self.ckpt_path, max_to_keep=1)
-
-        if self.resume:
-            # Load checkpoint.
-            print('==> Resuming from checkpoint...')
-            assert os.path.isdir(self.ckpt_path), 'Error: no checkpoint directory found!'
-            # Restore the weights
-            ckpt.restore(manager.latest_checkpoint)
+    def train(self, train_ds, test_ds, epoch, **kwargs):
+        best_acc, curr_epoch, manager = self._init_train_step()
 
         for e in tqdm(range(int(curr_epoch), epoch)):
-            # Reset the metrics at the start of the next epoch
             self.train_loss.reset_states()
             self.train_accuracy.reset_states()
             self.test_loss.reset_states()
@@ -88,22 +77,46 @@ class SupervisedTrainer():
 
             for images, labels in test_ds:
                 self.test_step(images, labels)
+            
+            self._log(e)
+            self.save_checkpoint(best_acc, curr_epoch, manager, epoch=e)
+    
+    def reset_states(self):
+        self.train_loss.reset_states()
+        self.train_accuracy.reset_states()
+        self.test_loss.reset_states()
+        self.test_accuracy.reset_states()
 
-            template = f"Epoch {e+1}, Loss: {self.train_loss.result():.4f}, Accuracy: {self.train_accuracy.result()*100:.2f}%, " + \
-                       f"Test Loss: {self.test_loss.result():.4f}, Test Accuracy: {self.test_accuracy.result()*100:.2f}%"
-            print(template)
-            if self.wandb is not None:
-                self.wandb.log({'train_loss': self.train_loss.result(), 'train_accuracy': self.train_accuracy.result()*100,
-                                'test_loss': self.test_loss.result(), 'test_accuracy': self.test_accuracy.result()*100})
+    def _init_train_step(self):
+        best_acc = tf.Variable(0.0)
+        curr_epoch = tf.Variable(0)  # start from epoch 0 or last checkpoint epoch
+        checkpoint = tf.train.Checkpoint(curr_epoch=curr_epoch, best_acc=best_acc, optimizer=self.optimizer, model=self.model)
+        manager = tf.train.CheckpointManager(checkpoint, self.checkpoint_path, max_to_keep=1)
 
-            # Save checkpoint
-            if self.test_accuracy.result() > best_acc:
-                print('Saving...')
-                if not os.path.isdir(self.ckpt_path):
-                    os.makedirs(self.ckpt_path)
-                best_acc.assign(self.test_accuracy.result())
-                curr_epoch.assign(e + 1)
-                manager.save()
+        if self.resume:
+            print('==> Resuming from checkpoint...')
+            assert os.path.isdir(self.checkpoint_path), 'Error: no checkpoint directory found!'
+            checkpoint.restore(manager.latest_checkpoint)
+        return best_acc,curr_epoch,manager
+    
+    def _log(self, e):
+        template = f"Epoch {e+1}, Loss: {self.train_loss.result():.4f}, Accuracy: {self.train_accuracy.result()*100:.2f}%, " + \
+                   f"Test Loss: {self.test_loss.result():.4f}, Test Accuracy: {self.test_accuracy.result()*100:.2f}%"
+        print(template)
+        if self.wandb is not None:
+            self.wandb.log({'train_loss': self.train_loss.result(), 'train_accuracy': self.train_accuracy.result()*100,
+                            'test_loss': self.test_loss.result(), 'test_accuracy': self.test_accuracy.result()*100})
+            
+
+    def save_checkpoint(self, best_acc, curr_epoch, manager, epoch):
+        # Save checkpoint
+        if self.test_accuracy.result() > best_acc:
+            print('Saving...')
+            if not os.path.isdir(self.checkpoint_path):
+                os.makedirs(self.checkpoint_path)
+            best_acc.assign(self.test_accuracy.result())
+            curr_epoch.assign(epoch + 1)
+            manager.save()
 
     def predict(self, pred_ds, best, model=None):
         model = self.model if model is None else model

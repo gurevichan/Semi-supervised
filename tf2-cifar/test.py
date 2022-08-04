@@ -150,7 +150,7 @@ class Model():
 def main():
     # Data
     print('==> Preparing data...')
-    train_images, train_labels, test_images, test_labels = get_dataset()
+    train_images, train_labels, test_images, test_labels = get_data()
     mean, std = get_mean_and_std(train_images)
     train_images = normalize(train_images, mean, std)
     test_images = normalize(test_images, mean, std)
