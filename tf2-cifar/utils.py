@@ -76,8 +76,12 @@ def _one_hot(train_labels, num_classes, dtype=np.float32):
 
 
 def _augment_fn(images, labels):
+    if len(tf.shape(images)) == 3:
+        target_shape = (target_size, target_size, 3)
+    elif len(tf.shape(images)) == 4:
+        target_shape = (len(images), target_size, target_size, 3)
     images = tf.image.pad_to_bounding_box(images, padding, padding, target_size, target_size)
-    images = tf.image.random_crop(images, (image_size, image_size, 3))
+    images = tf.image.random_crop(images, target_shape)
     images = tf.image.random_flip_left_right(images)
     return images, labels
 

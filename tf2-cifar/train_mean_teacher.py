@@ -18,7 +18,7 @@ class MeanTeacher(SupervisedTrainer):
 
     def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, resume=False, wandb=None):
         super(MeanTeacher, self).__init__(model_type, decay_steps, lr, num_classes=num_classes, train_data_fraction=train_data_fraction, resume=resume, wandb=wandb)
-        self.checkpoint_path = f'./checkpoints/{args.model}/distill/train_frac_{args.train_data_fraction}'
+        self.checkpoint_path = f'./checkpoints/{args.model}/MeanTeacher/train_frac_{args.train_data_fraction}'
         self.teacher = copy.deepcopy(self.model)
         self.ema_alpha = 0.99  # should increase to 0.999 after a warmup period
         self.l2_loss = tf.keras.losses.MeanSquaredError()
