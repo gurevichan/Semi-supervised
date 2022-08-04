@@ -14,6 +14,9 @@ import models
 import utils 
 
 
+mirrored_strategy = tf.distribute.MirroredStrategy()
+
+
 class Args:
     #TODO: remove this and args from the trainer
     model="resnet18"
@@ -29,7 +32,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 
 class SupervisedTrainer():
     def __init__(self, model_type, decay_steps, num_classes=10, **kwargs):
-        self.model = utils.create_model(model_type, num_classes)
+        with mirrored_strategy.scope():
+            self.model = utils.create_model(model_type, num_classes)
         self.categorical_cross_entropy = tf.keras.losses.CategoricalCrossentropy()
         learning_rate_fn = tf.keras.experimental.CosineDecay(args.lr, decay_steps=decay_steps)
         self.optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate_fn, momentum=0.9)
@@ -126,8 +130,7 @@ class SupervisedTrainer():
 
 
 def main(args):
-    train_ds, test_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size, args.epoch)
-    
+    train_ds, test_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size * mirrored_strategy.num_replicas_in_sync, args.epoch)
     # Train
     print('==> Building model...')
     trainer = SupervisedTrainer(args.model, decay_steps)
@@ -135,6 +138,10 @@ def main(args):
     
     # Evaluate
     trainer.predict(test_ds, best=True)
+    # TODO: create script evaluate checkpoint
+    # TODO: evaluate teacher
+    # TODO: save teacher origin to checkpoint dir
+    # TODO: create save checkpoint function that saves also the current accuracy and epoch
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='TensorFlow2.0 CIFAR-10 Training')
