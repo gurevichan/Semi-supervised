@@ -31,7 +31,7 @@ mirrored_strategy = tf.distribute.MirroredStrategy()
 
 
 class SupervisedTrainer():
-    def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, resume=False **kwargs):
+    def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, resume=False, **kwargs):
         with mirrored_strategy.scope():
             self.model = utils.create_model(model_type, num_classes)
         self.categorical_cross_entropy = tf.keras.losses.CategoricalCrossentropy()
