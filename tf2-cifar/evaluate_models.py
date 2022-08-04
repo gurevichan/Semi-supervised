@@ -1,5 +1,6 @@
 import argparse
 import utils
+import os
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='TensorFlow2.0 CIFAR-10 Training')
@@ -14,4 +15,5 @@ if __name__ == "__main__":
     for checkpoint_path in args.checkpoint_paths:
         print(checkpoint_path)
         utils.load_weights_to_model(model, checkpoint_path)
-        utils.evaluate_model(model, test_ds=test_ds)
+        accuracy = utils.evaluate_model(model, test_ds=test_ds)
+        utils.write_json_to_file(data={"Test Accuracy": float(accuracy)}, filename=os.path.join(checkpoint_path, "log.json"))

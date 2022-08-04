@@ -24,7 +24,9 @@ args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 args.model = args.model.lower()
 
+
 class Model():
+
     def __init__(self, model_type, decay_steps, num_classes=10):
         if 'lenet' in model_type:
             self.model = LeNet(num_classes)
@@ -48,17 +50,17 @@ class Model():
                 self.model = MobileNetV2(num_classes)
         else:
             sys.exit(ValueError("{:s} is currently not supported.".format(model_type)))
-        
+
         self.loss_object = tf.keras.losses.CategoricalCrossentropy()
         learning_rate_fn = tf.keras.experimental.CosineDecay(args.lr, decay_steps=decay_steps)
         self.optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate_fn, momentum=0.9)
         self.weight_decay = 5e-4
-        
+
         self.train_loss = tf.keras.metrics.Mean(name='train_loss')
         self.train_accuracy = tf.keras.metrics.CategoricalAccuracy(name='train_accuracy')
         self.test_loss = tf.keras.metrics.Mean(name='test_loss')
         self.test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
-        
+
     @tf.function
     def train_step(self, images, labels):
         with tf.GradientTape() as tape:
@@ -67,11 +69,11 @@ class Model():
             ce_loss = self.loss_object(labels, predictions)
             # L2 loss(weight decay)
             l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in self.model.trainable_variables])
-            loss = ce_loss + l2_loss*self.weight_decay
-            
+            loss = ce_loss + l2_loss * self.weight_decay
+
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
-        
+
         self.train_loss(loss)
         self.train_accuracy(labels, predictions)
 
@@ -79,18 +81,17 @@ class Model():
     def test_step(self, images, labels):
         predictions = self.model(images, training=False)
         t_loss = self.loss_object(labels, predictions)
-        
+
         self.test_loss(t_loss)
         self.test_accuracy(labels, predictions)
-        
+
     def train(self, train_ds, test_ds, epoch):
         best_acc = tf.Variable(0.0)
         curr_epoch = tf.Variable(0)  # start from epoch 0 or last checkpoint epoch
         ckpt_path = './checkpoints/{:s}/'.format(args.model)
-        ckpt = tf.train.Checkpoint(curr_epoch=curr_epoch, best_acc=best_acc,
-                                   optimizer=self.optimizer, model=self.model)
+        ckpt = tf.train.Checkpoint(curr_epoch=curr_epoch, best_acc=best_acc, optimizer=self.optimizer, model=self.model)
         manager = tf.train.CheckpointManager(ckpt, ckpt_path, max_to_keep=1)
-        
+
         if args.resume:
             # Load checkpoint.
             print('==> Resuming from checkpoint...')
@@ -98,7 +99,7 @@ class Model():
 
             # Restore the weights
             ckpt.restore(manager.latest_checkpoint)
-        
+
         for e in tqdm(range(int(curr_epoch), epoch)):
             # Reset the metrics at the start of the next epoch
             self.train_loss.reset_states()
@@ -108,17 +109,16 @@ class Model():
 
             for images, labels in train_ds:
                 self.train_step(images, labels)
-                
+
             for images, labels in test_ds:
                 self.test_step(images, labels)
 
             template = 'Epoch {:0}, Loss: {:.4f}, Accuracy: {:.2f}%, Test Loss: {:.4f}, Test Accuracy: {:.2f}%'
-            print (template.format(e+1,
-                                   self.train_loss.result(),
-                                   self.train_accuracy.result()*100,
-                                   self.test_loss.result(),
-                                   self.test_accuracy.result()*100))
-            
+            print(
+                template.format(e + 1, self.train_loss.result(),
+                                self.train_accuracy.result() * 100, self.test_loss.result(),
+                                self.test_accuracy.result() * 100))
+
             # Save checkpoint
             if self.test_accuracy.result() > best_acc:
                 print('Saving...')
@@ -127,24 +127,25 @@ class Model():
                 if not os.path.isdir(ckpt_path):
                     os.mkdir(ckpt_path)
                 best_acc.assign(self.test_accuracy.result())
-                curr_epoch.assign(e+1)
+                curr_epoch.assign(e + 1)
                 manager.save()
-    
+
     def predict(self, pred_ds, best):
         if best:
             ckpt_path = './checkpoints/{:s}/'.format(args.model)
             ckpt = tf.train.Checkpoint(model=self.model)
             manager = tf.train.CheckpointManager(ckpt, ckpt_path, max_to_keep=1)
-            
+
             # Load checkpoint
             print('==> Resuming from checkpoint...')
             assert os.path.isdir(ckpt_path), 'Error: no checkpoint directory found!'
             ckpt.restore(manager.latest_checkpoint)
-        
+
         self.test_accuracy.reset_states()
         for images, labels in pred_ds:
             self.test_step(images, labels)
-        print ('Prediction Accuracy: {:.2f}%'.format(self.test_accuracy.result()*100))
+        print('Prediction Accuracy: {:.2f}%'.format(self.test_accuracy.result() * 100))
+
 
 def main():
     # Data
@@ -158,14 +159,14 @@ def main():
     test_ds = tf.data.Dataset.from_tensor_slices((test_images, test_labels)).\
             batch(args.batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
-    class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
-                   'dog', 'frog', 'horse', 'ship', 'truck']
-    decay_steps = int(args.epoch*len(train_images)/args.batch_size)
-    
+    class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+    decay_steps = int(args.epoch * len(train_images) / args.batch_size)
+
     # Evaluate
     print('==> Evaluate...')
     model = Model(args.model, decay_steps)
     model.predict(test_ds, best=True)
+
 
 if __name__ == "__main__":
     main()

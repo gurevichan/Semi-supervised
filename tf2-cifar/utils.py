@@ -11,12 +11,13 @@ from tensorflow.keras import datasets
 
 import numpy as np
 import models
-import sys 
+import sys
 import os
+import json
 
 padding = 4
 image_size = 32
-target_size = image_size + padding*2
+target_size = image_size + padding * 2
 
 
 def get_dataset(train_data_fraction=1.0):
@@ -28,8 +29,8 @@ def get_dataset(train_data_fraction=1.0):
     train_labels = train_labels[:train_samples]
     print(f'Train labels distribution {np.unique(train_labels, return_counts=True)} for {train_samples} labeled images')
     # Normalize pixel values to be between 0 and 1
-    train_images, test_images = train_images/255.0, test_images/255.0
-    
+    train_images, test_images = train_images / 255.0, test_images / 255.0
+
     # One-hot labels
     train_labels = _one_hot(train_labels, 10)
     test_labels = _one_hot(test_labels, 10)
@@ -75,11 +76,11 @@ def prepare_data(train_data_fraction, batch_size, epoch):
     mean, std = get_mean_and_std(train_images)
     train_images = normalize(train_images, mean, std)
     test_images = normalize(test_images, mean, std)
-    
+
     train_ds = dataset_generator(train_images, train_labels, batch_size)
     test_ds = tf.data.Dataset.from_tensor_slices((test_images, test_labels)).\
             batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-    
+
     class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
     decay_steps = int(epoch * len(train_images) / batch_size)
     return train_ds, test_ds, decay_steps
@@ -101,7 +102,13 @@ def evaluate_model(model, test_ds):
     test_accuracy.reset_states()
     for images, labels in test_ds:
         test_step(model, test_accuracy, images, labels)
-    print (f'Prediction Accuracy: {test_accuracy.result()*100:.2f}')
+    print(f'Prediction Accuracy: {test_accuracy.result()*100:.2f}')
+    return np.round(test_accuracy.result() * 100, 2)
+
+
+def write_json_to_file(data, filename):
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 
 @tf.function
