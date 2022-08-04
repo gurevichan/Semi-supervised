@@ -9,22 +9,28 @@ import os
 import sys
 import argparse
 from tqdm import tqdm
+import wandb
 
 import models
 import utils
 
-mirrored_strategy = tf.distribute.MirroredStrategy()
+mirrored_strategy = tf.distribute.MirroredStrategy() # TODO: finish this
+
+
+policy = mixed_precision.Policy('mixed_float16')
+mixed_precision.set_global_policy(policy)
 
 
 class SupervisedTrainer():
 
-    def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, resume=False, **kwargs):
+    def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, resume=False, wandb=None, **kwargs):
         with mirrored_strategy.scope():
             self.model = utils.create_model(model_type, num_classes)
         self.categorical_cross_entropy = tf.keras.losses.CategoricalCrossentropy()
         learning_rate_fn = tf.keras.experimental.CosineDecay(lr, decay_steps=decay_steps)
         self.optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate_fn, momentum=0.9)
         self.weight_decay = 5e-4
+        self.wandb = wandb 
 
         self.train_loss = tf.keras.metrics.Mean(name='train_loss')
         self.train_accuracy = tf.keras.metrics.CategoricalAccuracy(name='train_accuracy')
@@ -86,6 +92,9 @@ class SupervisedTrainer():
             template = f"Epoch {e+1}, Loss: {self.train_loss.result():.4f}, Accuracy: {self.train_accuracy.result()*100:.2f}%, " + \
                        f"Test Loss: {self.test_loss.result():.4f}, Test Accuracy: {self.test_accuracy.result()*100:.2f}%"
             print(template)
+            if self.wandb is not None:
+                self.wandb.log({'train_loss': self.train_loss.result(), 'train_accuracy': self.train_accuracy.result()*100,
+                                'test_loss': self.test_loss.result(), 'test_accuracy': self.test_accuracy.result()*100})
 
             # Save checkpoint
             if self.test_accuracy.result() > best_acc:
@@ -107,8 +116,16 @@ class SupervisedTrainer():
 def main(args):
     train_ds, test_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size * mirrored_strategy.num_replicas_in_sync, args.epoch)
     # Train
+
     print('==> Building model...')
-    trainer = SupervisedTrainer(args.model, decay_steps, lr=args.lr, num_classes=10, train_data_fraction=args.train_data_fraction, resume=args.resume)
+    wandb.init(project="my-test-project")
+    wandb.config.update(args)
+    wandb.config.update({"tain_class": "SupervisedTrainer"})
+    
+    trainer = SupervisedTrainer(args.model, decay_steps, lr=args.lr, num_classes=10, 
+                                train_data_fraction=args.train_data_fraction, resume=args.resume, wandb=wandb)
+
+
     trainer.train(train_ds, test_ds, args.epoch)
 
     # Evaluate
@@ -130,8 +147,5 @@ if __name__ == "__main__":
     parser.add_argument('--gpu', default=0, type=int, help='specify which gpu to be used')
     args = parser.parse_args()
     args.model = args.model.lower()
-
-    policy = mixed_precision.Policy('mixed_float16')
-    mixed_precision.set_global_policy(policy)
 
     main(args)
