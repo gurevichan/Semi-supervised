@@ -118,7 +118,7 @@ def main(args):
     # Train
 
     print('==> Building model...')
-    wandb.init(project="my-test-project")
+    wandb.init(project="SemiSupervised-Cifar10", entity="andrey-gureivch")
     wandb.config.update(args)
     wandb.config.update({"tain_class": "SupervisedTrainer"})
     
