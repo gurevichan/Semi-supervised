@@ -31,7 +31,7 @@ mirrored_strategy = tf.distribute.MirroredStrategy()
 
 
 class SupervisedTrainer():
-    def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, **kwargs):
+    def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, resume=False **kwargs):
         with mirrored_strategy.scope():
             self.model = utils.create_model(model_type, num_classes)
         self.categorical_cross_entropy = tf.keras.losses.CategoricalCrossentropy()
@@ -44,6 +44,7 @@ class SupervisedTrainer():
         self.test_loss = tf.keras.metrics.Mean(name='test_loss')
         self.test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
         self.ckpt_path = f'./checkpoints/{model_type}/train_frac_{train_data_fraction}'
+        self.resume = resume
 
     @tf.function #(jit_compile=True)
     def train_step(self, images, labels):
@@ -133,7 +134,7 @@ def main(args):
     train_ds, test_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size * mirrored_strategy.num_replicas_in_sync, args.epoch)
     # Train
     print('==> Building model...')
-    trainer = SupervisedTrainer(args.model, decay_steps, lr=args.lr, num_classes=10, train_data_fraction=args.train_data_fraction)
+    trainer = SupervisedTrainer(args.model, decay_steps, lr=args.lr, num_classes=10, train_data_fraction=args.train_data_fraction, resume=args.resume)
     trainer.train(train_ds, test_ds, args.epoch)
     
     # Evaluate
