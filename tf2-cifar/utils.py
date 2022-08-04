@@ -12,7 +12,7 @@ from tensorflow.keras import datasets
 import numpy as np
 import models
 import sys 
-
+import os
 
 padding = 4
 image_size = 32
@@ -85,6 +85,17 @@ def prepare_data(train_data_fraction, batch_size, epoch):
     return train_ds, test_ds, decay_steps
 
 
+def load_weights_to_model(model, checkpoint_path):
+    checkpoint = tf.train.Checkpoint(model=model)
+    # Load checkpoint.
+    print(f'==> Loading from checkpoint... {checkpoint_path}')
+    manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=1)
+
+    assert os.path.isdir(checkpoint_path), 'Error: no checkpoint directory found!'
+    # Restore the weights
+    checkpoint.restore(manager.latest_checkpoint).expect_partial()
+
+
 def evaluate_model(model, test_ds):
     test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
     test_accuracy.reset_states()
@@ -99,7 +110,7 @@ def test_step(model, test_accuracy, images, labels):
     test_accuracy(labels, predictions)
 
 
-def create_model(model_type, num_classes):
+def create_model(model_type, num_classes=10):
     if 'lenet' in model_type:
         model = models.LeNet(num_classes)
     elif 'alexnet' in model_type:

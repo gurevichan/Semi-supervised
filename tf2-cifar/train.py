@@ -69,17 +69,6 @@ class SupervisedTrainer():
         
         self.test_loss(t_loss)
         self.test_accuracy(labels, predictions)
-
-    @staticmethod
-    def load_weights_to_model(model, ckpt_path):
-        ckpt = tf.train.Checkpoint(model=model)
-        # Load checkpoint.
-        print(f'==> Loading from checkpoint... {ckpt_path}')
-        manager = tf.train.CheckpointManager(ckpt, ckpt_path, max_to_keep=1)
-
-        assert os.path.isdir(ckpt_path), 'Error: no checkpoint directory found!'
-        # Restore the weights
-        ckpt.restore(manager.latest_checkpoint).expect_partial()
         
         
     def train(self, train_ds, test_ds, epoch):
@@ -126,7 +115,7 @@ class SupervisedTrainer():
         model = self.model if model is None else model
         if best:
             # TODO: this loads the best model INPLACE!!!!
-            self.load_weights_to_model(model, self.ckpt_path)
+            utils.load_weights_to_model(model, self.ckpt_path)
         utils.evaluate_model(self.model, pred_ds)
 
 
