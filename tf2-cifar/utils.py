@@ -10,6 +10,9 @@ import tensorflow as tf
 from tensorflow.keras import datasets
 
 import numpy as np
+import models
+import sys 
+
 
 padding = 4
 image_size = 32
@@ -43,6 +46,7 @@ def get_mean_and_std(images):
 def normalize(images, mean, std):
     """Normalize data with mean and std."""
     return (images - mean) / std
+
 
 def dataset_generator(images, labels, batch_size):
     ds = tf.data.Dataset.from_tensor_slices((images, labels))
@@ -84,9 +88,10 @@ def prepare_data(train_data_fraction, batch_size, epoch):
 def evaluate_model(model, test_ds):
     test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
     test_accuracy.reset_states()
-    for images, labels in pred_ds:
+    for images, labels in test_ds:
         test_step(model, test_accuracy, images, labels)
     print (f'Prediction Accuracy: {test_accuracy.result()*100:.2f}')
+
 
 @tf.function
 def test_step(model, test_accuracy, images, labels):

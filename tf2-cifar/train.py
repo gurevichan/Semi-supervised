@@ -30,7 +30,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 class SupervisedTrainer():
     def __init__(self, model_type, decay_steps, num_classes=10, **kwargs):
         self.model = utils.create_model(model_type, num_classes)
-        self.loss_object = tf.keras.losses.CategoricalCrossentropy()
+        self.categorical_cross_entropy = tf.keras.losses.CategoricalCrossentropy()
         learning_rate_fn = tf.keras.experimental.CosineDecay(args.lr, decay_steps=decay_steps)
         self.optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate_fn, momentum=0.9)
         self.weight_decay = 5e-4
@@ -46,7 +46,7 @@ class SupervisedTrainer():
         with tf.GradientTape() as tape:
             predictions = self.model(images, training=True)
             # Cross-entropy loss
-            ce_loss = self.loss_object(labels, predictions)
+            ce_loss = self.categorical_cross_entropy(labels, predictions)
             # L2 loss(weight decay)
             l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in self.model.trainable_variables])
             loss = ce_loss + l2_loss * self.weight_decay
@@ -60,7 +60,7 @@ class SupervisedTrainer():
     @tf.function
     def test_step(self, images, labels):
         predictions = self.model(images, training=False)
-        t_loss = self.loss_object(labels, predictions)
+        t_loss = self.categorical_cross_entropy(labels, predictions)
         
         self.test_loss(t_loss)
         self.test_accuracy(labels, predictions)

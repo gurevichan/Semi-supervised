@@ -28,7 +28,7 @@ class DistillTrainer(SupervisedTrainer):
         with tf.GradientTape() as tape:
             predictions = self.model(images, training=True)
             # Cross-entropy loss
-            ce_loss = self.loss_object(teacher_pred, predictions)
+            ce_loss = self.categorical_cross_entropy(teacher_pred, predictions)
             # L2 loss(weight decay)
             l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in self.model.trainable_variables])
             loss = ce_loss + l2_loss * self.weight_decay
@@ -42,7 +42,7 @@ class DistillTrainer(SupervisedTrainer):
     @tf.function
     def test_step(self, images, labels):
         predictions = self.model(images, training=False)
-        t_loss = self.loss_object(labels, predictions)
+        t_loss = self.categorical_cross_entropy(labels, predictions)
         
         self.test_loss(t_loss)
         self.test_accuracy(labels, predictions)
