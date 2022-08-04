@@ -17,25 +17,25 @@ import utils
 mirrored_strategy = tf.distribute.MirroredStrategy()
 
 
-class Args:
-    #TODO: remove this and args from the trainer
-    model="resnet18"
-    lr=1e-1
-    batch_size=128
-    epoch=200
-    resume=False
-    gpu=0
-    train_data_fraction=1.0
-args = Args() 
-os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+# class Args:
+#     #TODO: remove this and args from the trainer
+#     model="resnet18"
+#     lr=1e-1
+#     batch_size=128
+#     epoch=200
+#     resume=False
+#     gpu=0
+#     train_data_fraction=1.0
+# args = Args() 
+# os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 
 
 class SupervisedTrainer():
-    def __init__(self, model_type, decay_steps, num_classes=10, **kwargs):
+    def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, **kwargs):
         with mirrored_strategy.scope():
             self.model = utils.create_model(model_type, num_classes)
         self.categorical_cross_entropy = tf.keras.losses.CategoricalCrossentropy()
-        learning_rate_fn = tf.keras.experimental.CosineDecay(args.lr, decay_steps=decay_steps)
+        learning_rate_fn = tf.keras.experimental.CosineDecay(lr, decay_steps=decay_steps)
         self.optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate_fn, momentum=0.9)
         self.weight_decay = 5e-4
         
@@ -43,7 +43,7 @@ class SupervisedTrainer():
         self.train_accuracy = tf.keras.metrics.CategoricalAccuracy(name='train_accuracy')
         self.test_loss = tf.keras.metrics.Mean(name='test_loss')
         self.test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
-        self.ckpt_path = f'./checkpoints/{args.model}/train_frac_{args.train_data_fraction}'
+        self.ckpt_path = f'./checkpoints/{model_type}/train_frac_{train_data_fraction}'
 
     @tf.function #(jit_compile=True)
     def train_step(self, images, labels):
@@ -88,7 +88,7 @@ class SupervisedTrainer():
                                    optimizer=self.optimizer, model=self.model)
         manager = tf.train.CheckpointManager(ckpt, self.ckpt_path, max_to_keep=1)
         
-        if args.resume:
+        if self.resume:
             # Load checkpoint.
             print('==> Resuming from checkpoint...')
             assert os.path.isdir(self.ckpt_path), 'Error: no checkpoint directory found!'
@@ -133,7 +133,7 @@ def main(args):
     train_ds, test_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size * mirrored_strategy.num_replicas_in_sync, args.epoch)
     # Train
     print('==> Building model...')
-    trainer = SupervisedTrainer(args.model, decay_steps)
+    trainer = SupervisedTrainer(args.model, decay_steps, lr=args.lr, num_classes=10, train_data_fraction=args.train_data_fraction)
     trainer.train(train_ds, test_ds, args.epoch)
     
     # Evaluate
