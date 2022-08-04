@@ -138,7 +138,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='TensorFlow2.0 CIFAR-10 Training')
-    parser.add_argument('--model', required=True, type=str, help='model type')
+    parser.add_argument('--model', default='resnet18', type=str, help='model type')
     parser.add_argument('--lr', default=1e-1, type=float, help='learning rate')
     parser.add_argument('--batch_size', default=128, type=int, help='batch size')
     parser.add_argument('--epoch', default=200, type=int, help='number of training epoch')
