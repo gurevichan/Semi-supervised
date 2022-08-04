@@ -20,7 +20,7 @@ image_size = 32
 target_size = image_size + padding * 2
 
 
-def get_dataset(train_data_fraction=1.0):
+def get_data(train_data_fraction=1.0):
     """Download, parse and process a dataset to unit scale and one-hot labels."""
     (train_images, train_labels), (test_images, test_labels) = datasets.cifar10.load_data()
     assert train_data_fraction > 0.0 and train_data_fraction <= 1.0, "train_data_fraction must be in (0,1]"
@@ -36,6 +36,18 @@ def get_dataset(train_data_fraction=1.0):
     test_labels = _one_hot(test_labels, 10)
     return train_images, train_labels, test_images, test_labels
 
+def get_unlabeled_data(train_data_fraction=1.0):
+    """Download, parse and process a dataset to unit scale and one-hot labels."""
+    (train_images, train_labels), (test_images, test_labels) = datasets.cifar10.load_data()
+    
+    assert train_data_fraction > 0.0 and train_data_fraction <= 1.0, "train_data_fraction must be in (0,1]"
+    train_samples = int(len(train_labels) * train_data_fraction)
+    unlabeled_images = train_images[train_samples:]
+    
+    print(f'Got {len(unlabeled_images)} unlabeled images')
+
+    unlabeled_images = unlabeled_images / 255.0
+    return unlabeled_images
 
 def get_mean_and_std(images):
     """Compute the mean and std value of dataset."""
@@ -49,9 +61,10 @@ def normalize(images, mean, std):
     return (images - mean) / std
 
 
-def dataset_generator(images, labels, batch_size):
+def dataset_generator(images, labels, batch_size, augment=True):
     ds = tf.data.Dataset.from_tensor_slices((images, labels))
-    ds = ds.map(_augment_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    if augment:
+        ds = ds.map(_augment_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     ds = ds.shuffle(len(images)).batch(batch_size)
     ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
     return ds
@@ -69,20 +82,27 @@ def _augment_fn(images, labels):
     return images, labels
 
 
-def prepare_data(train_data_fraction, batch_size, epoch):
+def prepare_data(train_data_fraction, batch_size, epoch, augment=True, get_unlabeled=False):
     # Data
     print('==> Preparing data...')
-    train_images, train_labels, test_images, test_labels = get_dataset(train_data_fraction)
+    train_images, train_labels, test_images, test_labels = get_data(train_data_fraction)
+    
     mean, std = get_mean_and_std(train_images)
     train_images = normalize(train_images, mean, std)
     test_images = normalize(test_images, mean, std)
 
-    train_ds = dataset_generator(train_images, train_labels, batch_size)
+    train_ds = dataset_generator(train_images, train_labels, batch_size, augment=augment)
     test_ds = tf.data.Dataset.from_tensor_slices((test_images, test_labels)).\
             batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
     class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
     decay_steps = int(epoch * len(train_images) / batch_size)
+    if get_unlabeled:
+        unlabeled_images = get_unlabeled_data(train_data_fraction)
+        unlabeled_images = normalize(unlabeled_images, mean, std)
+        unlabeled_ds = tf.data.Dataset.from_tensor_slices(unlabeled_images).\
+                batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+        return train_ds, test_ds, unlabeled_ds, decay_steps
     return train_ds, test_ds, decay_steps
 
 
