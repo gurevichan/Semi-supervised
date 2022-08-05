@@ -48,7 +48,7 @@ class MeanTeacher(SupervisedTrainer):
             self.consistency_loss_metric.reset_states()
 
             for (images, labels), unlabeled_imgs in zip(train_ds, unlabeled_ds):
-                self.train_step(images, labels, unlabeled_imgs)
+                self.train_step(images, labels, unlabeled_imgs, epoch=e)
 
             for images, labels in test_ds:
                 self.test_step(images, labels)
@@ -56,10 +56,9 @@ class MeanTeacher(SupervisedTrainer):
             self._log(e)
             self.save_checkpoint(best_acc, curr_epoch, manager, epoch=e)
 
-    @tf.function  #(jit_compile=True)
     def train_step(self, images, labels, unlabeled_imgs):
-        u1, _ = utils._augment_fn(unlabeled_imgs, {})
-        u2, _ = utils._augment_fn(unlabeled_imgs, {})
+        u1 = unlabeled_imgs
+        u2 = utils._augment_fn(images, {}, adjust_colors=True)
         teacher_pred = self.teacher(u1, training=True)
 
         with tf.GradientTape() as tape:
@@ -71,7 +70,6 @@ class MeanTeacher(SupervisedTrainer):
             weight_decay_loss = tf.add_n([tf.nn.l2_loss(v) for v in self.model.trainable_variables])
 
             loss = supervised_loss + weight_decay_loss * self.weight_decay + consistency_loss
-
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
         self.train_loss(loss)
