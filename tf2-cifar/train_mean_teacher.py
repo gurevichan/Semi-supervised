@@ -25,7 +25,6 @@ class MeanTeacher(SupervisedTrainer):
         self.consistency_loss_metric = tf.keras.metrics.Mean(name='consistency_loss_metric')
         self.test_accuracy_teacher = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy_teacher')
 
-
     def ema_teacher_weights(self):
         for teacher_weight, model_weight in zip(self.teacher.trainable_variables, self.model.trainable_variables):
             teacher_weight.assign(self.ema_alpha * teacher_weight + (1 - self.ema_alpha) * model_weight)
@@ -84,10 +83,10 @@ class MeanTeacher(SupervisedTrainer):
     def _log(self, e):
         super()._log(e)
         print(f'Consistency loss: {self.consistency_loss_metric.result():.4f}, ' \
-              f'Test Accuracy Teacher: {self.test_accuracy_teacher.result():.2f}')
+              f'Test Accuracy Teacher: {self.test_accuracy_teacher.result()*100:.2f}')
         if self.wandb:
             self.wandb.log({'consistency_loss': self.consistency_loss_metric.result(),
-                            'test_accuracy_teacher': self.test_accuracy_teacher.result()})
+                            'test_accuracy_teacher': self.test_accuracy_teacher.result()*100})
 
 
     @tf.function
@@ -97,12 +96,14 @@ class MeanTeacher(SupervisedTrainer):
         self.test_accuracy_teacher(labels, predictions)
 
 def main(args):
-    train_ds, test_ds, unlabeled_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size, args.epoch, get_unlabeled=True)
+    train_ds, test_ds, unlabeled_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size, 
+                                                                      args.epoch, get_unlabeled=True)
 
     print('==> Building model...')
     wandb = None
     trainer = MeanTeacher(args.model, decay_steps, lr=args.lr, num_classes=10, 
-                          train_data_fraction=args.train_data_fraction, resume=args.resume, wandb=wandb)
+                          train_data_fraction=args.train_data_fraction, resume=args.resume, 
+                          wandb=wandb, consistency_weight=args.consistency_weight)
     trainer.train(train_ds, test_ds, args.epoch, unlabeled_ds=unlabeled_ds)
     # Evaluate
     utils.evaluate_model(trainer.model, test_ds)
@@ -117,6 +118,7 @@ if __name__ == "__main__":
     parser.add_argument('--train_data_fraction', default=1.0, type=float, help='fraction of data to use in train')
     parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
     parser.add_argument('--gpu', default=0, type=int, help='specify which gpu to be used')
+    parser.add_argument('--consistensy_weight', '-cw', default=1, type=float, help='specify which gpu to be used')
     args = parser.parse_args()
     args.model = args.model.lower()
 
