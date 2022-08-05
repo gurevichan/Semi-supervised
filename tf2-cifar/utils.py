@@ -84,8 +84,8 @@ def _augment_fn(images, labels, adjust_colors=False):
     images = tf.image.random_crop(images, target_shape)
     images = tf.image.random_flip_left_right(images)
     if adjust_colors:
-        images = tf.image.stateless_random_contrast(images, lower=0.5, upper=1)
-        images = tf.image.stateless_random_brightness(images, max_delta=0.5)
+        images = tf.image.random_contrast(images, lower=0.5, upper=1)
+        images = tf.image.random_brightness(images, max_delta=0.5)
     return images, labels
 
 
