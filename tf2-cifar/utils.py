@@ -61,10 +61,13 @@ def normalize(images, mean, std):
     return (images - mean) / std
 
 
-def dataset_generator(images, labels, batch_size, augment=True):
+def dataset_generator(images, labels, batch_size, augment=True, use_color_aug=False):
     ds = tf.data.Dataset.from_tensor_slices((images, labels))
+    
     if augment:
-        ds = ds.map(_augment_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        if use_color_aug:
+            print('Using color aug in dataset')
+        ds = ds.map(lambda x,y: _augment_fn(x,y, adjust_colors=use_color_aug), num_parallel_calls=tf.data.experimental.AUTOTUNE)
     ds = ds.shuffle(len(images)).batch(batch_size)
     ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
     return ds
@@ -75,7 +78,7 @@ def _one_hot(train_labels, num_classes, dtype=np.float32):
     return np.array(train_labels == np.arange(num_classes), dtype)
 
 
-def _augment_fn(images, labels, adjust_colors=False):
+def _augment_fn(images, labels, adjust_colors=False, noise_sigma=0.1):
     if len(tf.shape(images)) == 3:
         target_shape = (image_size, image_size, 3)
     elif len(tf.shape(images)) == 4:
@@ -86,10 +89,12 @@ def _augment_fn(images, labels, adjust_colors=False):
     if adjust_colors:
         images = tf.image.random_contrast(images, lower=0.5, upper=1)
         images = tf.image.random_brightness(images, max_delta=0.5)
+        noise = tf.random.normal(shape=tf.shape(images), mean=0.0, stddev=noise_sigma, dtype=tf.float64)
+        images = tf.add(images, noise)
     return images, labels
 
 
-def prepare_data(train_data_fraction, batch_size, epoch, augment=True, get_unlabeled=False, unlabled_bs_multiplier=2):
+def prepare_data(train_data_fraction, batch_size, epoch, augment=True, get_unlabeled=False, unlabled_bs_multiplier=2, use_color_aug=False):
     # Data
     print('==> Preparing data...')
     train_images, train_labels, test_images, test_labels = get_data(train_data_fraction)
@@ -98,7 +103,7 @@ def prepare_data(train_data_fraction, batch_size, epoch, augment=True, get_unlab
     train_images = normalize(train_images, mean, std)
     test_images = normalize(test_images, mean, std)
 
-    train_ds = dataset_generator(train_images, train_labels, batch_size, augment=augment)
+    train_ds = dataset_generator(train_images, train_labels, batch_size, augment=augment, use_color_aug=use_color_aug)
     test_ds = tf.data.Dataset.from_tensor_slices((test_images, test_labels)).\
             batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 

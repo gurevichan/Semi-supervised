@@ -1,11 +1,29 @@
 """Train CIFAR-10 with TensorFlow2.0."""
+import os
+# os.environ["CUDA_VISIBLE_DEVICES"] = str(1)
+
 import tensorflow as tf
+
+# physical_devices = tf.config.list_physical_devices('GPU')
+# print(physical_devices)
+# logical_devices = tf.config.list_logical_devices('GPU')
+# print(logical_devices)
+# for gpu in range(4):
+#     try:
+#         # Disable first GPU
+#         tf.config.set_visible_devices(physical_devices[gpu], 'GPU')
+#         # Logical device was not created for first GPU
+#         assert len(logical_devices) == 1
+#         print(f'GPU {gpu} was set')
+#     except Exception as e:
+#         # Invalid device or cannot modify virtual devices once initialized.
+#         print(f'GPU not set: \n{e}')
+
 from tensorflow.keras import layers
 from tensorflow.keras import mixed_precision
-
+from tensorflow.keras import mixed_precision
 import numpy as np
 import matplotlib.pyplot as plt
-import os
 import sys
 import argparse
 from tqdm import tqdm
@@ -13,13 +31,17 @@ import copy
 from train import SupervisedTrainer, _init_args
 import utils
 
+physical_devices = tf.config.list_physical_devices('GPU')
+print(f"{physical_devices=}")
+logical_devices = tf.config.list_logical_devices('GPU')
+print(f"{logical_devices=}")
 policy = mixed_precision.Policy('mixed_float16')
 mixed_precision.set_global_policy(policy)
 
 class MeanTeacher(SupervisedTrainer):
 
     def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, 
-                 resume=False, wandb=None, consistency_weight=1., ema_start=0.99, ema_end=0.995):
+                 resume=False, wandb=None, consistency_weight=1., ema_start=0.99, ema_end=0.995, noise_sigma=0.1):
         super(MeanTeacher, self).__init__(model_type, decay_steps, lr, num_classes=num_classes, 
                                           train_data_fraction=train_data_fraction, resume=resume, wandb=wandb)
         self.checkpoint_path = f'./checkpoints/{model_type}/MeanTeacher/train_frac_{train_data_fraction}'
@@ -30,6 +52,7 @@ class MeanTeacher(SupervisedTrainer):
         self.consistency_loss_metric = tf.keras.metrics.Mean(name='consistency_loss_metric')
         self.test_accuracy_teacher = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy_teacher')
         self.consistency_weight = consistency_weight
+        self.noise_sigma = noise_sigma
 
     def ema_teacher_weights(self, ema_alpha):
         for teacher_weight, model_weight in zip(self.teacher.trainable_variables, self.model.trainable_variables):
@@ -58,7 +81,7 @@ class MeanTeacher(SupervisedTrainer):
     @tf.function
     def train_step(self, images, labels, unlabeled_imgs, training_progress):
         u1 = unlabeled_imgs
-        u2, _ = utils._augment_fn(unlabeled_imgs, {}, adjust_colors=True)
+        u2, _ = utils._augment_fn(unlabeled_imgs, {}, adjust_colors=True, noise_sigma=self.noise_sigma)
         u1_pred = self.teacher(u1, training=True)
         consistency_weight, ema_alpha = self._get_weight_decay_and_ema_alpha(training_progress)
         with tf.GradientTape() as tape:
@@ -111,25 +134,13 @@ def main():
     parser.add_argument('--unlabled_bs_multiplier', '-bsm', default=2, type=int, help='specify batch size multiplier for unlabled data, will increase unlabled data fraction')
     parser.add_argument('--ema', default=0.99, type=float, help='ema weight to start with')
     parser.add_argument('--ema_end', default=0.995, type=float, help='ema weight to end with')
+    parser.add_argument('--noise_sigma', default=0.1, type=float, help='noise sigma for teacher aug')
     args = parser.parse_args()
     args.model = args.model.lower()
 
-    physical_devices = tf.config.list_physical_devices('GPU')
-    print(physical_devices)
-    try:
-        # Disable first GPU
-        logical_devices = tf.config.list_logical_devices('GPU')
-        print(logical_devices)
-        tf.config.set_visible_devices(physical_devices[args.gpu:args.gpu+1], 'GPU')
-        # Logical device was not created for first GPU
-        assert len(logical_devices) == 1
-        print(f'GPU {args.gpu} was set')
-    except Exception as e:
-        # Invalid device or cannot modify virtual devices once initialized.
-        print(f'GPU not set: \n{e}')
-
     wandb.config.update(args)
     wandb.config.update({"tain_class": "MeanTeacher"})
+    wandb.run.name = wandb.run.name if args.name == None else args.name
     if args.additional_wandb_args is not None:
         wandb.config.update({f"additional arg {i}": arg for i, arg in enumerate(args.additional_wandb_args)})
 
@@ -138,8 +149,9 @@ def main():
 
     print('==> Building model...')
     trainer = MeanTeacher(args.model, decay_steps, lr=args.lr, num_classes=10, 
-                          train_data_fraction=args.train_data_fraction, resume=args.resume, 
-                          wandb=wandb, consistency_weight=args.consistency_weight, ema_start=args.ema, ema_end=args.ema_end)
+                        train_data_fraction=args.train_data_fraction, resume=args.resume, 
+                        wandb=wandb, consistency_weight=args.consistency_weight, ema_start=args.ema, ema_end=args.ema_end, 
+                        noise_sigma=args.noise_sigma)
     trainer.train(train_ds, test_ds, args.epoch, unlabeled_ds=unlabeled_ds)
     # Evaluate
     utils.evaluate_model(trainer.model, test_ds)
