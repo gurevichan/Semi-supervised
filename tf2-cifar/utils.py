@@ -89,7 +89,7 @@ def _augment_fn(images, labels, adjust_colors=False):
     return images, labels
 
 
-def prepare_data(train_data_fraction, batch_size, epoch, augment=True, get_unlabeled=False):
+def prepare_data(train_data_fraction, batch_size, epoch, augment=True, get_unlabeled=False, unlabled_bs_multiplier=2):
     # Data
     print('==> Preparing data...')
     train_images, train_labels, test_images, test_labels = get_data(train_data_fraction)
@@ -107,8 +107,10 @@ def prepare_data(train_data_fraction, batch_size, epoch, augment=True, get_unlab
     if get_unlabeled:
         unlabeled_images = get_unlabeled_data(train_data_fraction)
         unlabeled_images = normalize(unlabeled_images, mean, std)
+        ubs = int(batch_size * unlabled_bs_multiplier)
         unlabeled_ds = tf.data.Dataset.from_tensor_slices(unlabeled_images).\
-                batch(batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+                batch(ubs).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+        print(f'unlabeled batch size {ubs}, labeled batch size {batch_size}')
         return train_ds, test_ds, unlabeled_ds, decay_steps
     return train_ds, test_ds, decay_steps
 

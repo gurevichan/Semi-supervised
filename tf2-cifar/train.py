@@ -122,7 +122,7 @@ class SupervisedTrainer():
         model = self.model if model is None else model
         if best:
             # TODO: this loads the best model INPLACE!!!!
-            utils.load_weights_to_model(model, self.ckpt_path)
+            utils.load_weights_to_model(model, self.checkpoint_path)
         utils.evaluate_model(self.model, pred_ds)
 
 

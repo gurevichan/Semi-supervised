@@ -57,11 +57,11 @@ class MeanTeacher(SupervisedTrainer):
     def train_step(self, images, labels, unlabeled_imgs, training_progress):
         u1 = unlabeled_imgs
         u2, _ = utils._augment_fn(unlabeled_imgs, {}, adjust_colors=True)
-        # teacher_pred = self.teacher(u1, training=True)
+        u1_pred = self.teacher(u1, training=False)
         consistency_weight, ema_alpha = self._get_weight_decay_and_ema_alpha(training_progress)
         with tf.GradientTape() as tape:
             labeled_preds = self.model(images, training=True)
-            u1_pred = self.teacher(u1, training=True)
+            # u1_pred = self.teacher(u1, training=True)
             u2_preds = self.model(u2, training=True)
 
             supervised_loss = self.categorical_cross_entropy(labels, labeled_preds)
@@ -73,7 +73,7 @@ class MeanTeacher(SupervisedTrainer):
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
         self.train_loss(loss)
         self.train_accuracy(labels, labeled_preds)
-        # self.ema_teacher_weights(ema_alpha)
+        self.ema_teacher_weights(ema_alpha)
         self.consistency_loss_metric(consistency_loss)
 
     def _get_weight_decay_and_ema_alpha(self, training_progress, verbose=False):
@@ -107,16 +107,17 @@ class MeanTeacher(SupervisedTrainer):
 
 def main():
     parser, wandb = _init_args()
-    parser.add_argument('--consistency_weight', '-cw', default=1, type=float, help='specify which gpu to be used')
+    parser.add_argument('--consistency_weight', '-cw', default=1, type=float, help='specify consistency weight')
+    parser.add_argument('--unlabled_bs_multiplier', '-bsm', default=2, type=int, help='specify batch size multiplier for unlabled data, will increase unlabled data fraction')
     args = parser.parse_args()
     args.model = args.model.lower()
     wandb.config.update(args)
     wandb.config.update({"tain_class": "MeanTeacher"})
     if args.additional_wandb_args is not None:
-        wandb.config.updated({f"additional arg {i}": args.additional_wandb_args[k] for i, k in zip(args.additional_wandb_args)})
+        wandb.config.update({f"additional arg {i}": arg for i, arg in enumerate(args.additional_wandb_args)})
 
     train_ds, test_ds, unlabeled_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size, 
-                                                                      args.epoch, get_unlabeled=True)
+                                                                      args.epoch, get_unlabeled=True, unlabled_bs_multiplier=args.unlabled_bs_multiplier)
 
     print('==> Building model...')
     trainer = MeanTeacher(args.model, decay_steps, lr=args.lr, num_classes=10, 
