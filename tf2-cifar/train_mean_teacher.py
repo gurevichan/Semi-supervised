@@ -19,12 +19,13 @@ mixed_precision.set_global_policy(policy)
 class MeanTeacher(SupervisedTrainer):
 
     def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, 
-                 resume=False, wandb=None, consistency_weight=1., ema_start=0.99):
+                 resume=False, wandb=None, consistency_weight=1., ema_start=0.99, ema_end=0.995):
         super(MeanTeacher, self).__init__(model_type, decay_steps, lr, num_classes=num_classes, 
                                           train_data_fraction=train_data_fraction, resume=resume, wandb=wandb)
         self.checkpoint_path = f'./checkpoints/{model_type}/MeanTeacher/train_frac_{train_data_fraction}'
         self.teacher = copy.deepcopy(self.model)
         self.ema_start = ema_start
+        self.ema_end = ema_end
         self.l2_loss = tf.keras.losses.MeanSquaredError()
         self.consistency_loss_metric = tf.keras.metrics.Mean(name='consistency_loss_metric')
         self.test_accuracy_teacher = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy_teacher')
@@ -83,9 +84,8 @@ class MeanTeacher(SupervisedTrainer):
         """
         start_consistency_weight = 0.0
         end_consistency_weight = self.consistency_weight
-        end_ema_alpha = 0.995
         consistency_weight = (1 - training_progress) * start_consistency_weight + training_progress * end_consistency_weight
-        ema_alpha = (1 - training_progress) * self.ema_start + training_progress * end_ema_alpha
+        ema_alpha = (1 - training_progress) * self.ema_start + training_progress * self.ema_end
         if verbose:
             print(f'{training_progress=:.2f}, {consistency_weight=:.2f}, {ema_alpha=:.4f}')
         return consistency_weight, ema_alpha
@@ -110,8 +110,24 @@ def main():
     parser.add_argument('--consistency_weight', '-cw', default=1, type=float, help='specify consistency weight')
     parser.add_argument('--unlabled_bs_multiplier', '-bsm', default=2, type=int, help='specify batch size multiplier for unlabled data, will increase unlabled data fraction')
     parser.add_argument('--ema', default=0.99, type=float, help='ema weight to start with')
+    parser.add_argument('--ema_end', default=0.995, type=float, help='ema weight to end with')
     args = parser.parse_args()
     args.model = args.model.lower()
+
+    physical_devices = tf.config.list_physical_devices('GPU')
+    print(physical_devices)
+    try:
+        # Disable first GPU
+        logical_devices = tf.config.list_logical_devices('GPU')
+        print(logical_devices)
+        tf.config.set_visible_devices(physical_devices[args.gpu:args.gpu+1], 'GPU')
+        # Logical device was not created for first GPU
+        assert len(logical_devices) == 1
+        print(f'GPU {args.gpu} was set')
+    except Exception as e:
+        # Invalid device or cannot modify virtual devices once initialized.
+        print(f'GPU not set: \n{e}')
+
     wandb.config.update(args)
     wandb.config.update({"tain_class": "MeanTeacher"})
     if args.additional_wandb_args is not None:
@@ -123,7 +139,7 @@ def main():
     print('==> Building model...')
     trainer = MeanTeacher(args.model, decay_steps, lr=args.lr, num_classes=10, 
                           train_data_fraction=args.train_data_fraction, resume=args.resume, 
-                          wandb=wandb, consistency_weight=args.consistency_weight, ema_start=args.ema)
+                          wandb=wandb, consistency_weight=args.consistency_weight, ema_start=args.ema, ema_end=args.ema_end)
     trainer.train(train_ds, test_ds, args.epoch, unlabeled_ds=unlabeled_ds)
     # Evaluate
     utils.evaluate_model(trainer.model, test_ds)
