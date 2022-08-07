@@ -36,7 +36,7 @@ class SupervisedTrainer():
         self.train_accuracy = tf.keras.metrics.CategoricalAccuracy(name='train_accuracy')
         self.test_loss = tf.keras.metrics.Mean(name='test_loss')
         self.test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
-        self.ckpt_path = f'./checkpoints/{model_type}/train_frac_{train_data_fraction}'
+        self.checkpoint_path = f'./checkpoints/{model_type}/train_frac_{train_data_fraction}'
         self.resume = resume
 
     @tf.function  #(jit_compile=True)
@@ -126,14 +126,18 @@ class SupervisedTrainer():
         utils.evaluate_model(self.model, pred_ds)
 
 
-def main(args):
+def main():
+    parser, wandb = _init_args()
+    args = parser.parse_args()
+    args.model = args.model.lower()
+    wandb.config.update(args)
+    wandb.config.update({"tain_class": "SupervisedTrainer"})
+    
     train_ds, test_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size * mirrored_strategy.num_replicas_in_sync, args.epoch)
     # Train
 
     print('==> Building model...')
-    wandb.init(project="SemiSupervised-Cifar10", entity="andrey-gureivch")
-    wandb.config.update(args)
-    wandb.config.update({"tain_class": "SupervisedTrainer"})
+
     
     trainer = SupervisedTrainer(args.model, decay_steps, lr=args.lr, num_classes=10, 
                                 train_data_fraction=args.train_data_fraction, resume=args.resume, wandb=wandb)
@@ -149,7 +153,7 @@ def main(args):
     # TODO: create save checkpoint function that saves also the current accuracy and epoch
 
 
-if __name__ == "__main__":
+def _init_args():
     parser = argparse.ArgumentParser(description='TensorFlow2.0 CIFAR-10 Training')
     parser.add_argument('--model', default='resnet18', type=str, help='model type')
     parser.add_argument('--lr', default=1e-1, type=float, help='learning rate')
@@ -158,7 +162,9 @@ if __name__ == "__main__":
     parser.add_argument('--train_data_fraction', default=1.0, type=float, help='fraction of data to use in train')
     parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
     parser.add_argument('--gpu', default=0, type=int, help='specify which gpu to be used')
-    args = parser.parse_args()
-    args.model = args.model.lower()
+    parser.add_argument('--additional_wandb_args', '-wandb', default=None, type=str, nargs='+')
+    wandb.init(project="SemiSupervised-Cifar10", entity="andrey-gureivch")
+    return parser, wandb
 
-    main(args)
+if __name__ == "__main__":
+    main()
