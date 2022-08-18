@@ -89,7 +89,7 @@ def _augment_fn(images, labels, adjust_colors=False, noise_sigma=0.1):
     if adjust_colors:
         images = tf.image.random_contrast(images, lower=0.5, upper=1)
         images = tf.image.random_brightness(images, max_delta=0.5)
-        noise = tf.random.normal(shape=tf.shape(images), mean=0.0, stddev=noise_sigma, dtype=tf.float64)
+        noise  = tf.random.normal(shape=tf.shape(images), mean=0.0, stddev=noise_sigma, dtype=tf.float64)
         images = tf.add(images, noise)
     return images, labels
 
