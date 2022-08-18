@@ -38,6 +38,7 @@ class SupervisedTrainer():
         self.test_accuracy = tf.keras.metrics.CategoricalAccuracy(name='test_accuracy')
         self.checkpoint_path = f'./checkpoints/{model_type}/train_frac_{train_data_fraction}'
         self.resume = resume
+        self.save_checkpoints = False
 
     @tf.function  #(jit_compile=True)
     def train_step(self, images, labels):
@@ -79,7 +80,8 @@ class SupervisedTrainer():
                 self.test_step(images, labels)
             
             self._log(e)
-            self.save_checkpoint(best_acc, curr_epoch, manager, epoch=e)
+            if self.save_checkpoints:
+                self.save_checkpoint(best_acc, curr_epoch, manager, epoch=e)
     
     def reset_states(self):
         self.train_loss.reset_states()
