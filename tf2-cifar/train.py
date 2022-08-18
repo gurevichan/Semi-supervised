@@ -14,7 +14,7 @@ import wandb
 import models
 import utils
 
-mirrored_strategy = tf.distribute.MirroredStrategy() # TODO: finish this
+# mirrored_strategy = tf.distribute.MirroredStrategy() # TODO: finish this
 
 
 # policy = mixed_precision.Policy('mixed_float16')
@@ -24,8 +24,8 @@ mirrored_strategy = tf.distribute.MirroredStrategy() # TODO: finish this
 class SupervisedTrainer():
 
     def __init__(self, model_type, decay_steps, lr, num_classes=10, train_data_fraction=1.0, resume=False, wandb=None, **kwargs):
-        with mirrored_strategy.scope():
-            self.model = utils.create_model(model_type, num_classes)
+        # with mirrored_strategy.scope():
+        self.model = utils.create_model(model_type, num_classes)
         self.categorical_cross_entropy = tf.keras.losses.CategoricalCrossentropy()
         learning_rate_fn = tf.keras.experimental.CosineDecay(lr, decay_steps=decay_steps)
         self.optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate_fn, momentum=0.9)
@@ -148,13 +148,17 @@ def main():
 
     
     trainer = SupervisedTrainer(args.model, decay_steps, lr=args.lr, num_classes=10, 
-                                train_data_fraction=args.train_data_fraction, resume=args.resume, wandb=wandb if args.use_wandb else None)
+                                train_data_fraction=args.train_data_fraction, resume=args.resume, 
+                                wandb=wandb if args.use_wandb else None)
+    trainer.model.build(input_shape=(None, 32, 32, 3))
+    trainer.model.summary()
 
     print ("==> Starting Training")
     trainer.train(train_ds, test_ds, args.epoch)
 
     # Evaluate
-    trainer.predict(test_ds, best=True)
+    # i'm not saving checkpoints thus no predict is needed
+    # trainer.predict(test_ds, best=True)
     # TODO: create script evaluate checkpoint
     # TODO: evaluate teacher
     # TODO: save teacher origin to checkpoint dir

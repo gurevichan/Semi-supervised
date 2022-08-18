@@ -1,0 +1,22 @@
+method: bayes
+metric:
+  goal: maximize
+  name: test_accuracy
+parameters:
+  epoch:
+    distribution: int_uniform
+    max: 300
+    min: 80
+  lr:
+    distribution: uniform
+    max: 0.4
+    min: 0.005
+  model:
+    distribution: categorical
+    values:
+      - conv
+  train_data_fraction:
+    distribution: categorical
+    values:
+      - 1.0
+program: train.py

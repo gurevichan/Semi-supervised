@@ -156,6 +156,8 @@ def create_model(model_type, num_classes=10):
         model = models.LeNet(num_classes)
     elif 'alexnet' in model_type:
         model = models.AlexNet(num_classes)
+    elif 'conv' in model_type:
+        model = models.SimpleConv(num_classes)
     elif 'vgg' in model_type:
         model = models.VGG(model_type, num_classes)
     elif 'resnet' in model_type:
