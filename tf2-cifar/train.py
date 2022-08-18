@@ -17,8 +17,8 @@ import utils
 mirrored_strategy = tf.distribute.MirroredStrategy() # TODO: finish this
 
 
-policy = mixed_precision.Policy('mixed_float16')
-mixed_precision.set_global_policy(policy)
+# policy = mixed_precision.Policy('mixed_float16')
+# mixed_precision.set_global_policy(policy)
 
 
 class SupervisedTrainer():
@@ -127,14 +127,16 @@ class SupervisedTrainer():
 
 
 def main():
-    parser, wandb = _init_args()
+    parser = _init_args()
     parser.add_argument('--use_color_aug', '-uca', action='store_true', help='use_color_aug')
     args = parser.parse_args()
 
     args.model = args.model.lower()
-    wandb.config.update(args)
-    wandb.config.update({"tain_class": "SupervisedTrainer"})
-    wandb.run.name = wandb.run.name if args.name == None else args.name
+    if args.use_wandb:
+        wandb.init(project="SemiSupervised-Cifar10", entity="andrey-gureivch")
+        wandb.config.update(args)
+        wandb.config.update({"tain_class": "SupervisedTrainer"})
+        wandb.run.name = wandb.run.name if args.name == None else args.name
 
     train_ds, test_ds, decay_steps = utils.prepare_data(args.train_data_fraction, 
                                                         args.batch_size, args.epoch, use_color_aug=args.use_color_aug)
@@ -144,9 +146,9 @@ def main():
 
     
     trainer = SupervisedTrainer(args.model, decay_steps, lr=args.lr, num_classes=10, 
-                                train_data_fraction=args.train_data_fraction, resume=args.resume, wandb=wandb)
+                                train_data_fraction=args.train_data_fraction, resume=args.resume, wandb=wandb if args.use_wandb else None)
 
-
+    print ("==> Starting Training")
     trainer.train(train_ds, test_ds, args.epoch)
 
     # Evaluate
@@ -168,8 +170,8 @@ def _init_args():
     parser.add_argument('--gpu', default=0, type=int, help='specify which gpu to be used')
     parser.add_argument('--additional_wandb_args', '-wandb', default=None, type=str, nargs='+')
     parser.add_argument('--name', default=None, type=str)
-    wandb.init(project="SemiSupervised-Cifar10", entity="andrey-gureivch")
-    return parser, wandb
+    parser.add_argument('--use_wandb', '-wdb', action='store_true')
+    return parser
 
 if __name__ == "__main__":
     main()
