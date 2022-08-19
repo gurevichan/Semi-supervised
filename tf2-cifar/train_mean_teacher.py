@@ -28,7 +28,7 @@ import sys
 import argparse
 from tqdm import tqdm
 import copy
-from train import SupervisedTrainer, _init_args
+from train import SupervisedTrainer, _init_args, init_wandb
 import utils
 
 physical_devices = tf.config.list_physical_devices('GPU')
@@ -60,9 +60,9 @@ class MeanTeacher(SupervisedTrainer):
 
     def train(self, train_ds, test_ds, epoch, unlabeled_ds, **kwargs):
         best_acc, curr_epoch, manager = self._init_train_step()
-
+        training_progress = tf.Variable(0.0)
         for e in tqdm(range(int(curr_epoch), epoch)):
-            training_progress = e/float(epoch)
+            training_progress.assign(e/float(epoch))
             self.train_loss.reset_states()
             self.train_accuracy.reset_states()
             self.test_loss.reset_states()
@@ -80,26 +80,30 @@ class MeanTeacher(SupervisedTrainer):
     
     @tf.function
     def train_step(self, images, labels, unlabeled_imgs, training_progress):
-        u1 = unlabeled_imgs
-        u2, _ = utils._augment_fn(unlabeled_imgs, {}, adjust_colors=True, noise_sigma=self.noise_sigma)
-        u1_pred = self.teacher(u1, training=True)
-        consistency_weight, ema_alpha = self._get_weight_decay_and_ema_alpha(training_progress)
+        if self.consistency_weight > 0:
+            u1 = unlabeled_imgs
+            u2, _ = utils._augment_fn(unlabeled_imgs, {}, adjust_colors=True, noise_sigma=self.noise_sigma)
+            u1_pred = self.teacher(u1, training=True)
+            consistency_weight, ema_alpha = self._get_weight_decay_and_ema_alpha(training_progress, verbose=False)
         with tf.GradientTape() as tape:
             labeled_preds = self.model(images, training=True)
-            # u1_pred = self.teacher(u1, training=True)
-            u2_preds = self.model(u2, training=True)
 
             supervised_loss = self.categorical_cross_entropy(labels, labeled_preds)
-            consistency_loss = self.l2_loss(u1_pred, u2_preds, sample_weight=1)
             weight_decay_loss = tf.add_n([tf.nn.l2_loss(v) for v in self.model.trainable_variables])
 
-            loss = supervised_loss + weight_decay_loss * self.weight_decay + consistency_loss * consistency_weight
+            loss = supervised_loss + weight_decay_loss * self.weight_decay
+            if self.consistency_weight > 0:
+                u2_preds = self.model(u2, training=True)
+                consistency_loss = self.l2_loss(u1_pred, u2_preds, sample_weight=1)
+                self.consistency_loss_metric(consistency_loss)
+                loss += consistency_loss * consistency_weight
+
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
         self.train_loss(loss)
         self.train_accuracy(labels, labeled_preds)
-        self.ema_teacher_weights(ema_alpha)
-        self.consistency_loss_metric(consistency_loss)
+        if self.consistency_weight > 0:
+            self.ema_teacher_weights(ema_alpha)
 
     def _get_weight_decay_and_ema_alpha(self, training_progress, verbose=False):
         """
@@ -129,29 +133,30 @@ class MeanTeacher(SupervisedTrainer):
         self.test_accuracy_teacher(labels, predictions)
 
 def main():
-    parser, wandb = _init_args()
+    parser = _init_args()
     parser.add_argument('--consistency_weight', '-cw', default=1, type=float, help='specify consistency weight')
-    parser.add_argument('--unlabled_bs_multiplier', '-bsm', default=2, type=int, help='specify batch size multiplier for unlabled data, will increase unlabled data fraction')
+    parser.add_argument('--unlabeled_bs_multiplier', '-bsm', default=2, type=int, help='specify batch size multiplier for unlabeled data, will increase unlabeled data fraction')
     parser.add_argument('--ema', default=0.99, type=float, help='ema weight to start with')
-    parser.add_argument('--ema_end', default=0.995, type=float, help='ema weight to end with')
+    parser.add_argument('--ema_end', default=0.999, type=float, help='ema weight to end with')
     parser.add_argument('--noise_sigma', default=0.1, type=float, help='noise sigma for teacher aug')
     args = parser.parse_args()
     args.model = args.model.lower()
-
-    wandb.config.update(args)
-    wandb.config.update({"tain_class": "MeanTeacher"})
-    wandb.run.name = wandb.run.name if args.name == None else args.name
-    if args.additional_wandb_args is not None:
-        wandb.config.update({f"additional arg {i}": arg for i, arg in enumerate(args.additional_wandb_args)})
-
+    wandb_experiment = init_wandb(args, train_class_name="MeanTeacher")
+    
     train_ds, test_ds, unlabeled_ds, decay_steps = utils.prepare_data(args.train_data_fraction, args.batch_size, 
-                                                                      args.epoch, get_unlabeled=True, unlabled_bs_multiplier=args.unlabled_bs_multiplier)
+                                                                      args.epoch, get_unlabeled=True, 
+                                                                      unlabeled_bs_multiplier=args.unlabeled_bs_multiplier)
 
     print('==> Building model...')
     trainer = MeanTeacher(args.model, decay_steps, lr=args.lr, num_classes=10, 
                         train_data_fraction=args.train_data_fraction, resume=args.resume, 
-                        wandb=wandb, consistency_weight=args.consistency_weight, ema_start=args.ema, ema_end=args.ema_end, 
+                        wandb=wandb_experiment, consistency_weight=args.consistency_weight, 
+                        ema_start=args.ema, ema_end=args.ema_end, 
                         noise_sigma=args.noise_sigma)
+    trainer.model.build(input_shape=(None, 32, 32, 3))
+    trainer.model.summary()
+
+    print ("==> Starting Training")
     trainer.train(train_ds, test_ds, args.epoch, unlabeled_ds=unlabeled_ds)
     # Evaluate
     utils.evaluate_model(trainer.model, test_ds)

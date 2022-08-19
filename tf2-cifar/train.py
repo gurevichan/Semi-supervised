@@ -134,22 +134,15 @@ def main():
     args = parser.parse_args()
 
     args.model = args.model.lower()
-    if args.use_wandb:
-        wandb.init(project="SemiSupervised-Cifar10", entity="andrey-gureivch")
-        wandb.config.update(args)
-        wandb.config.update({"tain_class": "SupervisedTrainer"})
-        wandb.run.name = wandb.run.name if args.name == None else args.name
+    wandb_experiment = init_wandb(args, train_class_name='SupervisedTrainer')
 
     train_ds, test_ds, decay_steps = utils.prepare_data(args.train_data_fraction, 
                                                         args.batch_size, args.epoch, use_color_aug=args.use_color_aug)
     # Train
-
-    print('==> Building model...')
-
-    
+    print('==> Building model...')    
     trainer = SupervisedTrainer(args.model, decay_steps, lr=args.lr, num_classes=10, 
                                 train_data_fraction=args.train_data_fraction, resume=args.resume, 
-                                wandb=wandb if args.use_wandb else None)
+                                wandb=wandb_experiment)
     trainer.model.build(input_shape=(None, 32, 32, 3))
     trainer.model.summary()
 
@@ -164,6 +157,17 @@ def main():
     # TODO: save teacher origin to checkpoint dir
     # TODO: create save checkpoint function that saves also the current accuracy and epoch
 
+def init_wandb(args, train_class_name):
+    if args.use_wandb:
+        wandb.init(project="SemiSupervised-Cifar10", entity="andrey-gureivch")
+        wandb.config.update(args)
+        wandb.config.update({"tain_class": train_class_name})
+        wandb.run.name = wandb.run.name if args.name == None else args.name
+        if args.additional_wandb_args is not None:
+            wandb.config.update({f"additional arg {i}": arg for i, arg in enumerate(args.additional_wandb_args)})
+        return wandb
+    else:
+        return None
 
 def _init_args():
     parser = argparse.ArgumentParser(description='TensorFlow2.0 CIFAR-10 Training')
